@@ -10,7 +10,7 @@ new class extends Component {
     public function rules()
     {
         return [
-            'barcode' => 'required|max:13|numeric',
+            'barcode' => 'required|numeric',
             'quantity' => 'required|numeric|min:1',
         ];
     }
