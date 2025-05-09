@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 new class extends Component {
+
     use WithPagination;
 
     public string $barcode = '';
@@ -16,12 +17,11 @@ new class extends Component {
     public string $dateFrom = '';
     public string $dateTo = '';
 
-    public function rules()
+    protected function rules()
     {
         return [
             'barcode' => 'required',
-            'quantity' => 'required|numeric|min:1',
-            'emailAddress' => 'sometimes|required|email',
+            'quantity' => 'required',
         ];
     }
 
@@ -65,7 +65,7 @@ new class extends Component {
         }
     }
 
-    public function exportCsv()
+    protected function getScans()
     {
         // Get scans based on date range if provided
         $query = Scan::query();
@@ -78,13 +78,18 @@ new class extends Component {
             $query->whereDate('created_at', '<=', $this->dateTo);
         }
 
-        $scans = $query->orderBy('created_at', 'desc')->get();
+        // Aggregate barcodes and sum quantities
+        $scans = $query
+            ->selectRaw('barcode, SUM(quantity) as total_quantity, MAX(created_at) as last_scan_date')
+            ->groupBy('barcode')
+            ->orderBy('last_scan_date', 'desc')
+            ->get();
 
         // Generate CSV content
-        $csvContent = "Barcode,Quantity,Date\n";
+        $csvContent = "Barcode,Quantity,Last Scan Date\n";
 
         foreach ($scans as $scan) {
-            $csvContent .= "{$scan->barcode},{$scan->quantity},{$scan->created_at}\n";
+            $csvContent .= "{$scan->barcode},{$scan->total_quantity},{$scan->last_scan_date}\n";
         }
 
         // Generate a unique filename
@@ -92,6 +97,14 @@ new class extends Component {
 
         // Store the CSV file temporarily
         Storage::put($filename, $csvContent);
+
+        return $filename;
+    }
+
+
+    public function exportCsv()
+    {
+        $filename = $this->getScans();
 
         // Return the download response
         return Storage::download($filename, $filename);
@@ -114,31 +127,7 @@ new class extends Component {
             'emailAddress' => 'required|email',
         ]);
 
-        // Get scans based on date range if provided
-        $query = Scan::query();
-
-        if ($this->dateFrom) {
-            $query->whereDate('created_at', '>=', $this->dateFrom);
-        }
-
-        if ($this->dateTo) {
-            $query->whereDate('created_at', '<=', $this->dateTo);
-        }
-
-        $scans = $query->orderBy('created_at', 'desc')->get();
-
-        // Generate CSV content
-        $csvContent = "Barcode,Quantity,Date\n";
-
-        foreach ($scans as $scan) {
-            $csvContent .= "{$scan->barcode},{$scan->quantity},{$scan->created_at}\n";
-        }
-
-        // Generate a unique filename
-        $filename = 'scans_' . now()->format('Y-m-d_His') . '.csv';
-
-        // Store the CSV file temporarily
-        Storage::put('public/exports/' . $filename, $csvContent);
+        $filename = $this->getScans();
 
         // Send email with attachment
         Mail::send([], [], function ($message) use ($filename) {
@@ -164,32 +153,38 @@ new class extends Component {
 <div>
     <flux:fieldset>
         <flux:legend>Scan a Barcode</flux:legend>
-        <div class="space-y-6">
-            <flux:input name="Barcode" wire:model.live="barcode" autofocus="true" x-on:focus="$el.select()" x-data x-on:barcode-saved.window="$el.focus()"/>
-            <flux:input name="Quantity" type="numeric" wire:model="quantity"/>
-        </div>
+        <form wire:submit="save">
+            <div class="space-y-6">
+                <flux:input label="Barcode" wire:model.live="barcode" autofocus="true" x-on:focus="$el.select()" x-data
+                            x-on:barcode-saved.window="$el.focus()" wire:loading.attr="disabled"/>
+                <flux:input label="Quantity" type="numeric" wire:model="quantity" wire:loading.attr="disabled"/>
+            </div>
+            <div class="w-full py-2 px-4 border-b-green-700 bg-green-400 rounded-md mt-4 shadow" wire:loading="save">
+                <p class="text-lg text-green-900">
+                    Saving Scan...
+                </p>
+            </div>
+        </form>
     </flux:fieldset>
 
     <!-- Export Controls -->
     <div class="mt-6 flex flex-wrap gap-4 items-end">
         <div>
             <label for="dateFrom" class="block text-sm font-medium text-gray-700 dark:text-gray-300">From Date</label>
-            <input type="date" id="dateFrom" wire:model="dateFrom" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700">
+            <input type="date" id="dateFrom" wire:model="dateFrom"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700">
         </div>
 
         <div>
             <label for="dateTo" class="block text-sm font-medium text-gray-700 dark:text-gray-300">To Date</label>
-            <input type="date" id="dateTo" wire:model="dateTo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700">
+            <input type="date" id="dateTo" wire:model="dateTo"
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700">
         </div>
 
         <div class="flex space-x-2">
-            <button wire:click="exportCsv" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
-                Download CSV
-            </button>
+            <flux:button wire:click="exportCsv()" variant="primary">Download CSV</flux:button>
 
-            <button wire:click="openEmailModal" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-500 focus:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
-                Email CSV
-            </button>
+            <flux:button wire:click="openEmailModal()">Email CSV</flux:button>
         </div>
     </div>
 
@@ -208,20 +203,29 @@ new class extends Component {
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Barcode</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Quantity</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Time</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Barcode
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Quantity
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Time
+                    </th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Actions
+                    </th>
                 </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 @foreach($this->scans as $scan)
-                    <tr>
+                    <tr wire:key="{{$scan->id}}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{{ $scan->barcode }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{{ $scan->quantity }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">{{ $scan->created_at->diffForHumans() }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                            <button wire:click="delete({{ $scan->id }})" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
+                            <button wire:click="delete({{ $scan->id }})"
+                                    class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
                                 Delete
                             </button>
                         </td>
@@ -248,18 +252,23 @@ new class extends Component {
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Email CSV Export</h3>
 
                     <div class="mt-4">
-                        <label for="emailAddress" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
-                        <input type="email" id="emailAddress" wire:model="emailAddress" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700" placeholder="Enter email address">
+                        <label for="emailAddress" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email
+                            Address</label>
+                        <input type="email" id="emailAddress" wire:model="emailAddress"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700"
+                               placeholder="Enter email address">
                         @error('emailAddress') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
                     </div>
                 </div>
 
                 <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 text-right">
-                    <button wire:click="closeEmailModal" class="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-25 transition ease-in-out duration-150">
+                    <button wire:click="closeEmailModal"
+                            class="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-25 transition ease-in-out duration-150">
                         Cancel
                     </button>
 
-                    <button wire:click="emailCsv" class="ml-3 inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-500 focus:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
+                    <button wire:click="emailCsv"
+                            class="ml-3 inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-500 focus:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
                         Send Email
                     </button>
                 </div>
