@@ -155,7 +155,7 @@ new class extends Component {
         <flux:legend>Scan a Barcode</flux:legend>
         <form wire:submit="save">
             <div class="space-y-6">
-                <flux:input label="Barcode" wire:model.live="barcode" autofocus="true" x-on:focus="$el.select()" x-data
+                <flux:input label="Barcode" wire:model.live.debounce="barcode" autofocus="true" x-on:focus="$el.select()" x-data
                             x-on:barcode-saved.window="$el.focus()" wire:loading.attr="disabled"/>
                 <flux:input label="Quantity" type="numeric" wire:model="quantity" wire:loading.attr="disabled"/>
             </div>
