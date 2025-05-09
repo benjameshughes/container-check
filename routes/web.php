@@ -21,6 +21,7 @@ Route::middleware(['auth'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('scan', 'scan.index')->name('scan');
+    Volt::route('export', 'scan.export')->name('export');
 });
 
 require __DIR__.'/auth.php';
