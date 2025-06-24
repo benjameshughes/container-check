@@ -77,8 +77,8 @@ new class extends Component {
         });
     }
 }">
-        <audio x-ref="successSound" src="{{ asset('sounds/success.mp3') }}" preload="auto"></audio>
-         <audio x-ref="errorSound" src="{{ asset('sounds/error.mp3') }}" preload="auto"></audio>
+        <audio x-ref="successSound" src="https://images.caecus.net/assets/sounds/success.mp3" preload="auto"></audio>
+         <audio x-ref="errorSound" src="https://images.caecus.net/caecus/assets/sounds/error.mp3" preload="auto"></audio>
     </div>
 
     <flux:fieldset>
