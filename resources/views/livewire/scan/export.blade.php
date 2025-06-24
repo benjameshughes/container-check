@@ -16,6 +16,9 @@ new class extends Component {
     public string $emailAddress = '';
     public string $dateFrom = '';
     public string $dateTo = '';
+    public string $search = '';
+    public array $perPageOptions = [1,5,10,25,50,100,250,500];
+    public int $perPage = 25;
 
     public bool $isSendingEmail = false;
 
@@ -65,8 +68,12 @@ new class extends Component {
             $query->where('created_at', '<=', Carbon::parse($this->dateTo)->endOfDay());
         }
 
+        if(!empty($this->search)) {
+            $query->where('barcode', 'like', "%{$this->search}");
+        }
+
         return [
-            'scans' => $query->orderBy('created_at', 'desc')->paginate(10),
+            'scans' => $query->orderBy('created_at', 'desc')->paginate($this->perPage),
         ];
     }
 
@@ -220,6 +227,9 @@ new class extends Component {
 
     <!-- Export Controls -->
     <div class="mt-6 flex flex-wrap gap-4 items-end">
+        <div>
+            <flux:input label="Search" wire:model.live="search"/>
+        </div>
         <div>
             <flux:input label="From" wire:model.live="dateFrom" type="date"/>
             @error('dateFrom') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror

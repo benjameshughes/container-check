@@ -11,7 +11,7 @@ new class extends Component {
     protected function rules()
     {
         return [
-            'barcode' => 'required',
+            'barcode' => 'required|numeric|min_digits:13',
             'quantity' => 'required|numeric|min:1', // Added validation for quantity
         ];
     }
@@ -56,6 +56,7 @@ new class extends Component {
 
         // Reset the component's public properties, clearing the form fields.
         $this->reset();
+        $this->dispatch('play-success-sound');
 
         // After saving and resetting, dispatch an event to re-focus the barcode input.
         // This ensures the input is ready for the next scan after an AJAX update.
@@ -65,6 +66,21 @@ new class extends Component {
 
 {{-- The Blade/HTML part of your Volt component --}}
 <div>
+
+    <div x-data="{
+    init() {
+        window.addEventListener('play-success-sound', () => {
+            this.$refs.successSound.play();
+        });
+        window.addEventListener('play-error-sound', () => {
+            this.$refs.errorSound.play();
+        });
+    }
+}">
+        <audio x-ref="successSound" src="{{ asset('sounds/success.mp3') }}" preload="auto"></audio>
+         <audio x-ref="errorSound" src="{{ asset('sounds/error.mp3') }}" preload="auto"></audio>
+    </div>
+
     <flux:fieldset>
         <flux:legend>Scan a Barcode</flux:legend>
         <form wire:submit="save" autocomplete="off">
