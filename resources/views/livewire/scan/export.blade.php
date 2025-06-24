@@ -6,165 +6,124 @@ use Livewire\WithPagination;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Carbon\Carbon; // Ensure Carbon is imported for date manipulation
 
 new class extends Component {
 
     use WithPagination;
 
-    // Public properties that Livewire can bind to
     public bool $showEmailModal = false;
     public string $emailAddress = '';
     public string $dateFrom = '';
     public string $dateTo = '';
 
-    // Add a property to hold aggregated scans for the CSV, separate from the table's paginated scans
-    // This is not strictly necessary as getScans() re-runs when needed, but can clarify intent.
-    // public $aggregatedScans = []; // We'll generate this on demand in getScans()
-
-    // Add a loading state for the email button, as email can take time
     public bool $isSendingEmail = false;
 
-
-    /**
-     * Define validation rules for properties.
-     */
+    // You can keep rules() for the benefit of wire:model.live validation
+    // and for when you want to validate all properties at once, like in emailCsv
     protected function rules()
     {
         return [
             'emailAddress' => 'required|email',
-            'dateFrom' => 'nullable|date', // Make dates nullable and validate format
-            'dateTo' => 'nullable|date|after_or_equal:dateFrom', // 'after_or_equal' is important for date ranges
+            'dateFrom' => 'nullable|date',
+            'dateTo' => 'nullable|date|after_or_equal:dateFrom',
         ];
     }
 
-    /**
-     * Lifecycle hook: Runs once when the component is initially mounted.
-     * Sets default date range.
-     */
     public function mount()
     {
-        // Set default date range to the start and end of today
         $this->dateFrom = now()->startOfDay()->format('Y-m-d');
         $this->dateTo = now()->endOfDay()->format('Y-m-d');
     }
 
-    /**
-     * React to changes in public properties.
-     * This will automatically update the table when date filters change.
-     */
     public function updated($propertyName)
     {
-        // When date filters change, reset pagination to the first page.
-        // This is crucial, otherwise you might be on page 2 but the new filter has no page 2 results.
         if (in_array($propertyName, ['dateFrom', 'dateTo'])) {
             $this->resetPage();
+            // Validate dates on update to provide immediate feedback for date range errors
+            try {
+                $this->validate([
+                    'dateFrom' => 'nullable|date',
+                    'dateTo' => 'nullable|date|after_or_equal:dateFrom',
+                ]);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                // Livewire handles showing validation errors automatically.
+                // Just let the exception propagate.
+            }
         }
     }
 
-    /**
-     * Compute and return data for the view (e.g., table data).
-     * This method is called automatically by Livewire whenever reactive properties change.
-     */
     public function with()
     {
-        // Start building the query for paginated scans (for the table)
         $query = Scan::query();
 
-        // Apply date filters if they are set
         if (!empty($this->dateFrom)) {
-            $query->whereDate('created_at', '>=', $this->dateFrom);
+            $query->where('created_at', '>=', Carbon::parse($this->dateFrom)->startOfDay());
         }
 
         if (!empty($this->dateTo)) {
-            $query->whereDate('created_at', '<=', $this->dateTo);
+            $query->where('created_at', '<=', Carbon::parse($this->dateTo)->endOfDay());
         }
 
-        // Return the paginated results for the table.
-        // orderBy is good here to ensure consistent pagination.
         return [
             'scans' => $query->orderBy('created_at', 'desc')->paginate(10),
         ];
     }
 
-    /**
-     * Deletes a specific scan record and refreshes the table.
-     */
     public function delete($scanId)
     {
         $scan = Scan::find($scanId);
         if ($scan) {
             $scan->delete();
-            session()->flash('message', 'Scan deleted successfully.'); // Add a feedback message
+            session()->flash('message', 'Scan deleted successfully.');
         }
-
-        // We don't need to call $this->with() directly.
-        // Livewire will re-run 'with()' automatically due to the model change (if using traits).
-        // If not using model observers/traits, you might need to manually refresh: $this->resetPage();
-        $this->resetPage(); // Reset pagination to ensure we're on a valid page after delete
+        $this->resetPage();
     }
 
-    /**
-     * Helper method to get the filtered and aggregated scans for export/email.
-     * Returns the collection of scans, not a filename.
-     */
     protected function getFilteredAndAggregatedScans()
     {
         $query = Scan::query();
 
-        // Apply date filters
         if (!empty($this->dateFrom)) {
-            $query->whereDate('created_at', '>=', $this->dateFrom);
+            $query->where('created_at', '>=', Carbon::parse($this->dateFrom)->startOfDay());
         }
 
         if (!empty($this->dateTo)) {
-            $query->whereDate('created_at', '<=', $this->dateTo);
+            $query->where('created_at', '<=', Carbon::parse($this->dateTo)->endOfDay());
         }
 
-        // Aggregate barcodes and sum quantities
-        // Make sure column names match your CSV header and intended output
         $scans = $query
             ->selectRaw('barcode, SUM(quantity) as total_quantity, MAX(created_at) as last_scan_date')
             ->groupBy('barcode')
-            ->orderBy('last_scan_date', 'desc') // Order by the last scan date for aggregated data
+            ->orderBy('last_scan_date', 'desc')
             ->get();
 
         return $scans;
     }
 
-    /**
-     * Generates CSV content from aggregated scans.
-     * @param Collection $scans The collection of aggregated scan data.
-     * @return string The CSV content.
-     */
     protected function generateCsvContent($scans): string
     {
-        // Ensure headers accurately reflect the aggregated data
         $csvContent = "Barcode,Total Quantity,Last Scan Date\n";
-
         foreach ($scans as $scan) {
-            // Format the date for readability in CSV
             $formattedDate = \Carbon\Carbon::parse($scan->last_scan_date)->format('Y-m-d H:i:s');
-            $csvContent .= "\"{$scan->barcode}\",{$scan->total_quantity},\"{$formattedDate}\"\n";
+            $barcode = str_replace('"', '""', $scan->barcode);
+            $csvContent .= "\"{$barcode}\",{$scan->total_quantity},\"{$formattedDate}\"\n";
         }
-
         return $csvContent;
     }
 
-
-    /**
-     * Handles the download of the CSV file.
-     * This will stream the file directly to the browser without saving to disk first.
-     */
     public function exportCsv(): StreamedResponse
     {
-        $this->validate(['dateFrom', 'dateTo']); // Validate dates before exporting
+        // Explicitly validate properties and their values for this action
+        $this->validate([
+            'dateFrom' => $this->rules()['dateFrom'], // Get rule directly from rules()
+            'dateTo' => $this->rules()['dateTo'],     // Get rule directly from rules()
+        ]);
 
         $aggregatedScans = $this->getFilteredAndAggregatedScans();
         $csvContent = $this->generateCsvContent($aggregatedScans);
-
         $filename = 'scans_' . now()->format('Y-m-d_His') . '.csv';
 
-        // Stream the CSV content directly. This is more efficient and doesn't require temporary file storage.
         return response()->streamDownload(function () use ($csvContent) {
             echo $csvContent;
         }, $filename, [
@@ -172,55 +131,47 @@ new class extends Component {
         ]);
     }
 
-
-    /**
-     * Opens the email modal.
-     */
     public function openEmailModal()
     {
-        // Validate dates here too, before opening modal if they're used for content
-        $this->validate(['dateFrom', 'dateTo']);
+        // Explicitly validate properties and their values for this action
+        $this->validate([
+            'dateFrom' => $this->rules()['dateFrom'],
+            'dateTo' => $this->rules()['dateTo'],
+        ]);
+
         $this->showEmailModal = true;
     }
 
-    /**
-     * Closes the email modal and resets email address.
-     */
     public function closeEmailModal()
     {
         $this->showEmailModal = false;
-        $this->reset('emailAddress'); // Clear email address on close
+        $this->reset('emailAddress');
     }
 
-    /**
-     * Emails the CSV file as an attachment.
-     */
     public function emailCsv()
     {
-        $this->isSendingEmail = true; // Set loading state
+        $this->isSendingEmail = true;
 
         try {
-            // Validate email address and date filters
-            $this->validate(); // This will use the rules defined in protected function rules()
+            // Explicitly validate all properties for this action
+            $this->validate([
+                'emailAddress' => $this->rules()['emailAddress'],
+                'dateFrom' => $this->rules()['dateFrom'],
+                'dateTo' => $this->rules()['dateTo'],
+            ]);
 
             $aggregatedScans = $this->getFilteredAndAggregatedScans();
             $csvContent = $this->generateCsvContent($aggregatedScans);
 
             $filename = 'scans_' . now()->format('Y-m-d_His') . '.csv';
-            $tempFilePath = 'exports/' . $filename; // Use a dedicated temporary public path
+            $tempFilePath = 'exports/' . $filename;
 
-            // Store the CSV file temporarily in a publicly accessible storage (for email attachment)
-            // Using 'local' disk often maps to storage/app, but Mail::attach needs a path.
-            // For attachments, best practice is to put it where Mail::send can read it.
-            // If using S3 or similar, this would involve different config.
-            // For local, ensure it's in storage/app/exports or storage/app/public/exports
-            Storage::disk('local')->put($tempFilePath, $csvContent); // Store in storage/app/exports/
+            Storage::disk('local')->put($tempFilePath, $csvContent);
 
-            // Send email with attachment
             Mail::raw('Please find attached the barcode scans export.', function ($message) use ($tempFilePath, $filename) {
                 $message->to($this->emailAddress)
                     ->subject('Barcode Scans Export')
-                    ->attach(Storage::disk('local')->path($tempFilePath), [ // Get full path from storage disk
+                    ->attach(Storage::disk('local')->path($tempFilePath), [
                         'as' => $filename,
                         'mime' => 'text/csv',
                     ]);
@@ -229,22 +180,21 @@ new class extends Component {
             session()->flash('message', 'CSV file has been emailed successfully!');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            // Re-throw validation exception to be caught by Livewire for displaying errors
             throw $e;
         } catch (\Exception $e) {
             session()->flash('error', 'Failed to send email: ' . $e->getMessage());
-            // Log the error for debugging
             \Log::error('Email CSV error: ' . $e->getMessage(), ['email' => $this->emailAddress, 'file' => $filename]);
         } finally {
-            // Clean up the temporary file, regardless of success or failure
             if (isset($tempFilePath) && Storage::disk('local')->exists($tempFilePath)) {
                 Storage::disk('local')->delete($tempFilePath);
             }
             $this->closeEmailModal();
-            $this->isSendingEmail = false; // Reset loading state
+            $this->isSendingEmail = false;
         }
     }
-}; ?>
+};
+
+?>
 
 <div>
     {{-- Session Message Display --}}
