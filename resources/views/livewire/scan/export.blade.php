@@ -74,6 +74,7 @@ new class extends Component {
 
         return [
             'scans' => $query->orderBy('created_at', 'desc')->paginate($this->perPage),
+            'perPageOptions' => $this->perPageOptions,
         ];
     }
 
@@ -299,9 +300,17 @@ new class extends Component {
                 </tbody>
             </table>
         </div>
-        <div class="my-4">
+        <div class="my-4 flex justify-between">
+            <div>
+                <flux:select wire:model.live="perPage">
+                    @foreach($perPageOptions as $option)
+                        <flux:select.option>{{$option}}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            </div>
             {{$scans->links()}}
         </div>
+
     </div>
 
     <!-- Email Modal -->
