@@ -327,27 +327,13 @@ new class extends Component {
                 <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Email CSV Export</h3>
 
                 <div class="mt-4">
-                    <label for="emailAddress" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Email
-                        Address</label>
-                    <input type="email" id="emailAddress" wire:model.live="emailAddress" {{-- Use .live for real-time validation --}}
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:border-gray-700"
-                           placeholder="Enter email address">
-                    @error('emailAddress') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+                    <flux:input label="Email address" wire:model="emailAddress" type="email"/>
                 </div>
             </div>
 
             <div class="px-6 py-4 bg-gray-50 dark:bg-gray-700 text-right">
-                <button wire:click="closeEmailModal"
-                        class="inline-flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-widest shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-25 transition ease-in-out duration-150">
-                    Cancel
-                </button>
-
-                <button wire:click="emailCsv"
-                        wire:loading.attr="disabled" wire:target="emailCsv" {{-- Disable and show loading for email button --}}
-                        class="ml-3 inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-500 focus:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">
-                    <flux:icon.loading class="animate-spin" wire:loading wire:target="emailCsv"/>
-                    Send Email
-                </button>
+                <flux:button type="button" wire:click="closeEmailModal">Cancel</flux:button>
+                <flux:button type="button" wire:click="emailCsv">Send Email</flux:button>
             </div>
         </div>
     </div>
