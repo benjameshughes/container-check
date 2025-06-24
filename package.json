@@ -6,6 +6,7 @@
         "dev": "vite"
     },
     "dependencies": {
+        "@alpinejs/focus": "^3.14.9",
         "@tailwindcss/vite": "^4.0.7",
         "autoprefixer": "^10.4.20",
         "axios": "^1.7.4",

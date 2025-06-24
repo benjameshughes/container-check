@@ -2,9 +2,6 @@
 
 use App\Models\Scan;
 use Livewire\Volt\Component;
-use Livewire\WithPagination;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 
 new class extends Component {
 
@@ -15,41 +12,96 @@ new class extends Component {
     {
         return [
             'barcode' => 'required',
-            'quantity' => 'required',
+            'quantity' => 'required|numeric|min:1', // Added validation for quantity
         ];
     }
 
-    public function updatedBarcode()
+    /**
+     * Called once when the component is initially mounted on the page.
+     * This is for initial autofocus when the page first loads.
+     */
+    public function mount()
     {
-        if (!empty($this->barcode)) {
+        // Dispatch an event to tell Alpine.js to focus the barcode input.
+        // This makes sure it's focused when the page initially loads.
+        $this->dispatch('focus-barcode-input');
+    }
+
+    /**
+     * Called when a property bound with wire:model updates.
+     * We're specifically interested when the 'barcode' property changes.
+     */
+    public function updated(string $propertyName)
+    {
+        // Check if the updated property is 'barcode' and it's not empty.
+        // This prevents saving on quantity changes or empty barcode input.
+        if ($propertyName === 'barcode' && !empty($this->barcode)) {
             $this->save();
         }
     }
 
+    /**
+     * Saves the scan to the database and resets the form.
+     */
     public function save()
     {
+        // Validate the input data against the defined rules.
         $this->validate();
 
-        $scan = Scan::create([
+        // Create a new Scan record in the database.
+        Scan::create([
             'barcode' => $this->barcode,
             'quantity' => $this->quantity
         ]);
 
-        $this->reset('barcode');
-        $this->dispatch('focus-barcode');
+        // Reset the component's public properties, clearing the form fields.
+        $this->reset();
+
+        // After saving and resetting, dispatch an event to re-focus the barcode input.
+        // This ensures the input is ready for the next scan after an AJAX update.
+        $this->dispatch('focus-barcode-input');
     }
 }; ?>
 
+{{-- The Blade/HTML part of your Volt component --}}
 <div>
     <flux:fieldset>
         <flux:legend>Scan a Barcode</flux:legend>
-        <form wire:submit="save">
-            <div class="space-y-6" x-data x-init-="$watch('$wire.barcode', () => $refs.barcodeInput.focus())">
-                <flux:input label="Barcode" name="barcode" wire:model.live.debounce.1000="barcode" autofocus x-refs="barcodeInput" wire:loading.attr="disabled"/>
-                <flux:input label="Quantity" name="quantity" type="numeric" wire:model="quantity" wire:loading.attr="disabled"/>
+        <form wire:submit="save" autocomplete="off">
+            <div class="space-y-6">
+                <flux:input
+                        icon="barcode"
+                        label="Barcode"
+                        name="barcode"
+                        type="text"
+                        wire:model.live.debounce.300ms="barcode"
+                        x-data="{}" {{-- Alpine.js context for x-ref and event listener --}}
+                        x-ref="barcodeInput" {{-- Reference to easily access this input in Alpine --}}
+                        wire:loading.attr="disabled" {{-- Disable input while Livewire is busy --}}
+                        {{-- Alpine.js listens for our custom event and focuses the input --}}
+                        @focus-barcode-input.window="setTimeout(() => $refs.barcodeInput.focus(), 0)"
+                />
+                {{-- Error message for barcode, good practice for validation feedback --}}
+                @error('barcode') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
+
+                <flux:input
+                        label="Quantity"
+                        name="quantity"
+                        type="numeric"
+                        wire:model="quantity"
+                        wire:loading.attr="disabled"
+                />
+                {{-- Error message for quantity --}}
+                @error('quantity') <span class="text-red-500 text-sm">{{ $message }}</span> @enderror
             </div>
-            <div class="w-full py-2 px-4 border-b-green-700 bg-green-400 rounded-md mt-4 shadow" wire:loading="save">
-                <p class="text-lg text-green-900">
+
+            <div
+                    class="w-full py-2 px-4 border-b-green-700 bg-green-400 rounded-md mt-4 shadow"
+                    wire:loading="save"
+                    wire:target="save, barcode" {{-- Indicate what triggers this loading state --}}
+            >
+                <p class="text-lg text-green-900 flex gap-4 align-middle">
+                    <flux:icon.loading />
                     Saving Scan...
                 </p>
             </div>
