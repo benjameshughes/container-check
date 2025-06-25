@@ -30,6 +30,7 @@ new class extends Component {
             'emailAddress' => 'required|email',
             'dateFrom' => 'nullable|date',
             'dateTo' => 'nullable|date|after_or_equal:dateFrom',
+            'search' => 'nullable|string|max:255',
         ];
     }
 
