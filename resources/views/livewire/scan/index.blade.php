@@ -79,8 +79,9 @@ new class extends Component {
                         wire:model.live.debounce.300ms="barcode"
                         x-data="{}"
                         x-ref="barcodeInput"
+                        x-init="setTimeout(() => $refs.barcodeInput.focus(), 0)"
                         wire:loading.attr="disabled"
-                        @focus-barcode-input.window="$refs.barcodeInput.focus()"
+                        @focus-barcode-input.window="setTimeout(() => $refs.barcodeInput.focus(), 0)"
                         autofocus
                 />
 
