@@ -37,6 +37,15 @@ new class extends Component {
     }
 
     /**
+     * Simple button to clear the input if there is an error
+     */
+    public function clearInput()
+    {
+        $this->reset('barcode');
+        $this->dispatch('focus-barcode-input');
+    }
+
+    /**
      * Saves the scan to the database and resets the form.
      */
     public function save()
@@ -85,6 +94,8 @@ new class extends Component {
                         autofocus
                 />
 
+                <flux:text class="flex cursor-pointer justify-end" wire:click="clearInput">Clear</flux:text>
+
                 <flux:input
                         label="Quantity"
                         name="quantity"
@@ -107,11 +118,11 @@ new class extends Component {
         </form>
     </flux:fieldset>
 
-    <div class="mt-4">
-        <div class="flex mb-4 gap-2 items-center">
+    <div class="mt-8 fixed bottom-0 pb-4">
+        <div class="flex mb-2 gap-2 items-center">
             <flux:icon.info class="size-4" />
             <flux:heading color="blue">Helpful Tip</flux:heading>
         </div>
-        <flux:text>Before scanning make sure the barcode text box is highlighted. If not select the input. It will display a border to indicated selection.</flux:text>
+        <flux:text>Before scanning make sure the barcode text box is highlighted. If not, select the input. It will display a border and have a blinking curser to indicated selection.</flux:text>
     </div>
 </div>
